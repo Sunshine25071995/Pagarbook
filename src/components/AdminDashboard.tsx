@@ -948,17 +948,6 @@ export default function AdminDashboard({ auth, onLogout }: AdminDashboardProps) 
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">પાસવર્ડ (Password)</label>
-                      <input
-                        type="password"
-                        required
-                        value={empForm.password}
-                        onChange={(e) => setEmpForm({ ...empForm, password: e.target.value })}
-                        className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20"
-                        placeholder="ન્યૂનતમ ૬ અક્ષર"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">માસિક બેઝ પગાર (Monthly Salary ₹)</label>
                       <input
                         type="number"
@@ -1017,16 +1006,6 @@ export default function AdminDashboard({ auth, onLogout }: AdminDashboardProps) 
                         value={empForm.mobile}
                         onChange={(e) => setEmpForm({ ...empForm, mobile: e.target.value })}
                         className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">નવો પાસવર્ડ (બદલવો હોય તો જ લખો)</label>
-                      <input
-                        type="password"
-                        value={empForm.password}
-                        onChange={(e) => setEmpForm({ ...empForm, password: e.target.value })}
-                        className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20"
-                        placeholder="પાસવર્ડ યથાવત રાખવા ખાલી છોડો"
                       />
                     </div>
                     <div>

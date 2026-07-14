@@ -1,4 +1,4 @@
-const CACHE_NAME = "sunshine-pagar-book-v1";
+const CACHE_NAME = "sunshine-pagar-book-v4";
 const ASSETS = [
   "/",
   "/index.html",
@@ -27,6 +27,7 @@ self.addEventListener("activate", (e) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log("Removing old service worker cache:", key);
             return caches.delete(key);
           }
         })
@@ -40,6 +41,27 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   // Only handle GET requests and skip API calls
   if (e.request.method !== "GET" || e.request.url.includes("/api/")) {
+    return;
+  }
+
+  // Network-first for navigation/HTML page requests to avoid loading stale UI builds
+  const isDoc = e.request.mode === "navigate" || e.request.url.endsWith("/") || e.request.url.includes("index.html");
+  if (isDoc) {
+    e.respondWith(
+      fetch(e.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(e.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(e.request).then((cached) => cached || caches.match("/"));
+        })
+    );
     return;
   }
 

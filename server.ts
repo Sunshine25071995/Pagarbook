@@ -331,6 +331,123 @@ function pushRealtimeUpdate(employeeId: string, notification: any) {
 // 1. Authentication
 let isEmailAuthEnabled = true; // Flag to track if Email/Password provider is enabled in Firebase Console
 
+app.post("/api/auth/google-login", async (req, res) => {
+  const { email, name, employee_login_id } = req.body;
+  console.log("Google authentication login request received:", { email, employee_login_id });
+
+  try {
+    if (!email) {
+      return res.status(400).json({ success: false, message: "ગૂગલ ઈમેલ જરૂરી છે / गूगल ईमेल आवश्यक है" });
+    }
+
+    const trimmedEmail = email.toLowerCase().trim();
+
+    // 1. Check if this is the Admin email sunshinepolyfilm@gmail.com
+    if (trimmedEmail === "sunshinepolyfilm@gmail.com") {
+      console.log("Admin logged in successfully via Google Sign-In.");
+      return res.json({
+        success: true,
+        user: {
+          id: "admin-legacy-uid",
+          email: "sunshinepolyfilm@gmail.com",
+          role: "admin",
+          name: "Admin",
+        },
+      });
+    }
+
+    // 2. If login is for an employee (requires Employee ID linking)
+    if (employee_login_id) {
+      const loginIdUpper = employee_login_id.toUpperCase().trim();
+      
+      // Look up the user by their employee login id
+      let userDoc = await querySingleDoc("users", where("employee_login_id", "==", loginIdUpper));
+      
+      if (!userDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "કર્મચારી આઈડી ખોટી છે / कर्मचारी आईडी गलत है",
+        });
+      }
+
+      // Check if userDoc already has an email, and if it's not the internal fake one
+      const existingEmail = userDoc.email ? userDoc.email.toLowerCase().trim() : "";
+      const isInternalEmail = !existingEmail || existingEmail.endsWith("@sunshinepagarbook.internal");
+
+      if (isInternalEmail) {
+        // This is their first time logging in! We bind their Google email to this employee ID
+        console.log(`Binding Google email ${trimmedEmail} to employee ${loginIdUpper}`);
+        userDoc.email = trimmedEmail;
+        await setDocWithId("users", userDoc.id, userDoc);
+      } else if (existingEmail !== trimmedEmail) {
+        // The employee is trying to log in with a different Google account than previously bound
+        return res.status(400).json({
+          success: false,
+          message: "આ કર્મચારી આઈડી પર બીજું ગૂગલ એકાઉન્ટ લિંક થયેલું છે / इस कर्मचारी आईडी पर दूसरा गूगल खाता लिंक है",
+        });
+      }
+
+      // Get employee details for name
+      let empName = name || "Employee";
+      if (userDoc.employee_id) {
+        const emp = await getDocById("employees", userDoc.employee_id);
+        if (emp) {
+          empName = emp.name;
+        }
+      }
+
+      console.log("Employee verified successfully via Google Sign-In.");
+      return res.json({
+        success: true,
+        user: {
+          id: userDoc.id,
+          email: userDoc.email,
+          role: "employee",
+          employee_id: userDoc.employee_id,
+          name: empName,
+          login_id: userDoc.employee_login_id,
+        },
+      });
+    }
+
+    // 3. What if they clicked Google login but didn't enter an Employee ID, yet they are already a bound employee?
+    // We can search for any user document with this email
+    const userDocByEmail = await querySingleDoc("users", where("email", "==", trimmedEmail));
+    if (userDocByEmail) {
+      let empName = name || "Employee";
+      if (userDocByEmail.employee_id) {
+        const emp = await getDocById("employees", userDocByEmail.employee_id);
+        if (emp) {
+          empName = emp.name;
+        }
+      }
+
+      console.log("Employee found directly by email and logged in.");
+      return res.json({
+        success: true,
+        user: {
+          id: userDocByEmail.id,
+          email: userDocByEmail.email,
+          role: userDocByEmail.role,
+          employee_id: userDocByEmail.employee_id,
+          name: userDocByEmail.role === "admin" ? "Admin" : empName,
+          login_id: userDocByEmail.employee_login_id,
+        },
+      });
+    }
+
+    // If they are not found and did not provide an employee login ID:
+    return res.status(401).json({
+      success: false,
+      message: "આ ગૂગલ ઈમેલ લિંક થયેલ નથી. કૃપા કરીને પ્રથમ વખત લોગિન કરતી વખતે કર્મચારી આઈડી દાખલ કરો. / यह गूगल ईमेल लिंक नहीं है। कृपया पहली बार लॉगिन करते समय कर्मचारी आईडी दर्ज करें।",
+    });
+
+  } catch (err: any) {
+    console.error("Google authentication error:", err);
+    res.status(500).json({ success: false, message: "ગૂગલ લોગિન પ્રક્રિયામાં ભૂલ થઈ છે." });
+  }
+});
+
 app.post("/api/auth/login", async (req, res) => {
   const { email, password, employee_login_id } = req.body;
   console.log("Authentication login request received.");

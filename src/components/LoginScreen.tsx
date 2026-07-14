@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { LogIn, Key, Mail, ShieldAlert, UserCheck } from "lucide-react";
+import { LogIn, UserCheck, ShieldAlert } from "lucide-react";
 import { AuthState } from "../types";
+import { loginWithGoogle } from "../firebase";
 
 interface LoginScreenProps {
   onLoginSuccess: (user: AuthState) => void;
@@ -8,23 +9,36 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isAdmin, setIsAdmin] = useState(false);
-  const [email, setEmail] = useState("");
   const [employeeLoginId, setEmployeeLoginId] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleGoogleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const payload = isAdmin
-        ? { email, password }
-        : { employee_login_id: employeeLoginId.toUpperCase(), password };
+      if (!isAdmin && !employeeLoginId.trim()) {
+        setError("કૃપા કરીને કર્મચારી આઈડી દાખલ કરો / कृपया कर्मचारी आईडी दर्ज करें");
+        setLoading(false);
+        return;
+      }
 
-      const response = await fetch("/api/auth/login", {
+      // 1. Trigger Google Sign-In Popup
+      const user = await loginWithGoogle();
+      if (!user || !user.email) {
+        throw new Error("Google login did not return user email.");
+      }
+
+      // 2. Post credentials to our server API
+      const payload = {
+        email: user.email,
+        name: user.displayName || user.email.split("@")[0],
+        employee_login_id: isAdmin ? undefined : employeeLoginId.toUpperCase().trim(),
+      };
+
+      const response = await fetch("/api/auth/google-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -44,9 +58,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       } else {
         setError(data.message || "ખોટી લોગીન માહિતી / गलत लॉगिन विवरण");
       }
-    } catch (err) {
-      console.error("Login failed:", err);
-      setError("સર્વર કનેક્શન નિષ્ફળ થયું છે. / सर्वर कनेक्शन विफल रहा।");
+    } catch (err: any) {
+      console.error("Google Login failed:", err);
+      if (err.code === "auth/popup-closed-by-user") {
+        setError("ગૂગલ લોગિન વિન્ડો બંધ થઈ ગઈ છે. / गूगल लॉगिन विंडो बंद हो गई है।");
+      } else {
+        setError("સર્વર કનેક્શન નિષ્ફળ થયું છે અથવા લિંકિંગ ભૂલ છે. / सर्वर कनेक्शन विफल रहा या लिंकिंग त्रुटि।");
+      }
     } finally {
       setLoading(false);
     }
@@ -77,6 +95,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           {/* Toggle Role Selector */}
           <div className="grid grid-cols-2 gap-2 mb-6 border border-[#A9772F]/30 p-1 bg-[#F3EBD8]/40 rounded-full">
             <button
+              type="button"
               onClick={() => {
                 setIsAdmin(false);
                 setError("");
@@ -91,6 +110,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               <span>કર્મચારી લોગિન / कर्मचारी</span>
             </button>
             <button
+              type="button"
               onClick={() => {
                 setIsAdmin(true);
                 setError("");
@@ -112,27 +132,20 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleGoogleLogin} className="space-y-4">
             {isAdmin ? (
-              // Admin Fields (ID/Email + Password)
-              <div>
-                <label className="block text-xs font-bold text-[#2B2620]/75 mb-1 font-sans">
-                  એડમિન આઈડી / एडमिन आईडी
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A9772F]/70" size={16} />
-                  <input
-                    type="text"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="દા.ત. 753"
-                    className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20 transition-all placeholder:text-gray-400 font-sans min-h-[44px]"
-                  />
-                </div>
+              // Admin Instructions
+              <div className="text-center py-4 bg-amber-50/50 border border-[#A9772F]/20 rounded-lg px-3">
+                <p className="text-xs text-gray-600 leading-relaxed font-bold">
+                  ગૂગલ એકાઉન્ટ દ્વારા લોગિન કરો <br />
+                  <span className="text-[#8B2E2E] font-mono text-xs">sunshinepolyfilm@gmail.com</span>
+                </p>
+                <p className="text-[10px] text-gray-500 mt-2">
+                  *એડમિન ઈમેલ વગર લોગિન થશે નહીં
+                </p>
               </div>
             ) : (
-              // Employee Fields (Employee ID + Password)
+              // Employee Fields (Employee ID only, password is deleted!)
               <div>
                 <label className="block text-xs font-bold text-[#2B2620]/75 mb-1 font-sans">
                   કર્મચારી આઈડી / कर्मचारी आईडी
@@ -148,42 +161,26 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20 transition-all placeholder:text-gray-400 font-sans min-h-[44px] uppercase"
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1 pl-1">
-                  *એડમિન દ્વારા આપેલ આઈડી દાખલ કરો
+                <p className="text-[10px] text-gray-500 mt-2 pl-1 leading-normal">
+                  *પ્રથમ વખત લોગિન કરતી વખતે તમારો કર્મચારી આઈડી દાખલ કરો જેથી તમારું ગૂગલ એકાઉન્ટ લિંક થઈ શકે.
                 </p>
               </div>
             )}
 
-            {/* Password input */}
-            <div>
-              <label className="block text-xs font-bold text-[#2B2620]/75 mb-1 font-sans">
-                પાસવર્ડ / पासवर्ड
-              </label>
-              <div className="relative">
-                <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A9772F]/70" size={16} />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20 transition-all placeholder:text-gray-400 font-sans min-h-[44px]"
-                />
-              </div>
-            </div>
-
-            {/* Submit Button */}
+            {/* Google Login Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#A9772F] hover:bg-[#8B2E2E] text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer border border-[#A9772F]/20 min-h-[44px]"
+              className="w-full bg-[#4285F4] hover:bg-[#357ae8] text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer border border-[#4285F4]/20 min-h-[44px]"
             >
               {loading ? (
                 <span>ચકાસણી ચાલુ છે...</span>
               ) : (
                 <>
-                  <LogIn size={18} />
-                  <span>પ્રવેશ કરો / लॉगिन करें</span>
+                  <svg className="w-5 h-5 fill-current mr-1" viewBox="0 0 24 24">
+                    <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.866-3.577-7.866-8s3.536-8 7.866-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.743-.08-1.3-.178-1.859H12.24z" />
+                  </svg>
+                  <span>ગૂગલ લોગિન / Google Login</span>
                 </>
               )}
             </button>
