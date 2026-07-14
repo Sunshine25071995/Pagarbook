@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { LogIn, UserCheck, ShieldAlert } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { LogIn, UserCheck, ShieldAlert, ExternalLink } from "lucide-react";
 import { AuthState } from "../types";
 import { loginWithGoogle } from "../firebase";
 
@@ -12,6 +12,11 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [employeeLoginId, setEmployeeLoginId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isIframe, setIsIframe] = useState(false);
+
+  useEffect(() => {
+    setIsIframe(window.self !== window.top);
+  }, []);
 
   const handleGoogleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,8 +67,16 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       console.error("Google Login failed:", err);
       if (err.code === "auth/popup-closed-by-user") {
         setError("ગૂગલ લોગિન વિન્ડો બંધ થઈ ગઈ છે. / गूगल लॉगिन विंडो बंद हो गई है।");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setError(
+          `આ ડોમેન પરમિશન લિસ્ટમાં નથી! કૃપા કરીને Firebase Console -> Authentication -> Settings -> Authorized Domains માં આ ડોમેન ઉમેરો: "${window.location.hostname}" \n\nयह डोमेन अधिकृत नहीं है! कृपया Firebase Console -> Authentication -> Settings -> Authorized Domains में यह डोमेन जोड़ें: "${window.location.hostname}"`
+        );
+      } else if (err.code === "auth/web-storage-unsupported") {
+        setError("બ્રાઉઝર કુકીઝ અથવા સ્ટોરેજ બ્લોક છે. કૃપા કરીને નવા ટેબમાં ખોલો. / ब्राउज़र कुकीज़ या स्टोरेज ब्लॉक है। कृपया नए टैब में खोलें।");
       } else {
-        setError("સર્વર કનેક્શન નિષ્ફળ થયું છે અથવા લિંકિંગ ભૂલ છે. / सर्वर कनेक्शन विफल रहा या लिंकिंग त्रुटि।");
+        setError(
+          `લોગિન નિષ્ફળ ગયું / लॉगिन विफल रहा: ${err.message || err.code || String(err)}`
+        );
       }
     } finally {
       setLoading(false);
@@ -91,6 +104,30 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </p>
             <div className="h-[2px] bg-[#A9772F]/20 w-32 mx-auto mt-3"></div>
           </div>
+
+          {isIframe && (
+            <div className="mb-6 bg-amber-50/90 border border-amber-300 rounded-lg p-3.5 text-xs text-[#8B2E2E] shadow-sm">
+              <p className="font-bold mb-1 text-center flex items-center justify-center gap-1">
+                <span>⚠️</span>
+                <span>નવા ટેબમાં લૉગિન કરો / नए टैब में लॉगिन करें</span>
+              </p>
+              <p className="leading-relaxed mb-2 text-gray-700">
+                બ્રાઉઝરની સુરક્ષા મર્યાદાઓના કારણે આ ફ્રેમમાં ગૂગલ લોગિન બ્લોક હોઈ શકે છે. શ્રેષ્ઠ અનુભવ માટે કૃપા કરીને નીચે બટન પર ક્લિક કરો.
+              </p>
+              <p className="leading-relaxed mb-3 text-gray-600 italic">
+                ब्राउज़र की सुरक्षा सीमाओं के कारण इस फ्रेम में गूगल लॉगिन ब्लॉक हो सकता है। कृपया नए टैब में खोलें।
+              </p>
+              <a
+                href={window.location.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-[#8B2E2E] hover:bg-[#A9772F] text-white rounded-lg font-bold transition-all text-center shadow"
+              >
+                <ExternalLink size={14} />
+                <span>નવા ટેબમાં ખોલો / नए टैब में खोलें</span>
+              </a>
+            </div>
+          )}
 
           {/* Toggle Role Selector */}
           <div className="grid grid-cols-2 gap-2 mb-6 border border-[#A9772F]/30 p-1 bg-[#F3EBD8]/40 rounded-full">
@@ -122,12 +159,12 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               }`}
             >
               <ShieldAlert size={14} />
-              <span>એડમિન લોગિન / एडमिन</span>
+              <span>એડમિન લોગિન / Admin</span>
             </button>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-[#8B2E2E]/20 text-[#8B2E2E] text-xs rounded-lg font-medium leading-relaxed">
+            <div className="mb-4 p-3 bg-red-50 border border-[#8B2E2E]/20 text-[#8B2E2E] text-xs rounded-lg font-semibold leading-relaxed whitespace-pre-wrap font-mono">
               {error}
             </div>
           )}
