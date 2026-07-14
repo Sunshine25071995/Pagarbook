@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#8B2E2E" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/jpeg" href="/src/assets/images/app_icon_1784013648125.jpg" />
+    <title>Sunshine Pagar Book - સનશાઇન પગાર બુક 📚</title>
+    
+    <!-- Google Fonts for Tiro Gujarati, Noto Sans Gujarati, Noto Sans Devanagari, Hind, and JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Hind:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+Devanagari:wght@400;500;700&family=Noto+Sans+Gujarati:wght@400;500;700&family=Tiro+Gujarati:ital@0;1&display=swap" rel="stylesheet">
+    
+    <!-- html2canvas CDN for generating ledger-card images for WhatsApp sharing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYgYiGcZqCUPeNePXIm1NRYYi68UR689F679KgT24UdTmY90fADEsM61Dux68bRLuVsgmU8R80Ncb1Vsw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  </head>
+  <body class="bg-[#F3EBD8] text-[#2B2620]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Register Service Worker for PWA -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('Service worker registered successfully:', reg))
+            .catch((err) => console.warn('Service worker registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>

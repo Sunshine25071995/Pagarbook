@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Georgia", "Tiro Gujarati", "Noto Sans Gujarati", "Noto Sans Devanagari", "Inter", serif;
+  --font-guj-head: "Georgia", "Tiro Gujarati", serif;
+  --font-guj-body: "Georgia", "Noto Sans Gujarati", serif;
+  --font-hin-head: "Georgia", "Baloo 2", "Hind", serif;
+  --font-hin-body: "Georgia", "Noto Sans Devanagari", "Hind", serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-ledger-cream: #F3EBD8;
+  --color-ledger-maroon: #8B2E2E;
+  --color-ledger-maroon-light: #9C3B3B;
+  --color-ledger-green: #2F5D42;
+  --color-ledger-gold: #A9772F;
+  --color-ledger-ink: #2B2620;
+}
+
+/* Aged Notebook Ruled Paper Background Style - Artistic Flair Theme */
+.artistic-flair-bg {
+  background-color: #F3EBD8;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(169, 119, 47, 0.08) 31px, rgba(169, 119, 47, 0.08) 32px);
+  color: #2B2620;
+}
+
+/* Custom scrollbar matching ledger colors */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F3EBD8;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #A9772F;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8B2E2E;
+}
+
+/* Custom animated background pulse */
+@keyframes ambient-glow {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+.ambient-container {
+  animation: ambient-glow 8s ease-in-out infinite;
+}
+

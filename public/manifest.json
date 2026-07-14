@@ -1,0 +1,18 @@
+{
+  "name": "Sunshine Pagar Book",
+  "short_name": "Pagar Book",
+  "description": "સનશાઇન પગાર બુક 📚 — Traditional Indian salary and advance ledger tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3EBD8",
+  "theme_color": "#8B2E2E",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/src/assets/images/app_icon_1784013648125.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
