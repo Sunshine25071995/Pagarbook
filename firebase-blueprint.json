@@ -1,0 +1,135 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated user credentials and system role mapping",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "format": "email", "description": "Login email" },
+        "employee_login_id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Login alias" },
+        "password": { "type": "string", "description": "Simple plain-text password for demo" },
+        "role": { "type": "string", "enum": ["admin", "employee"] },
+        "employee_id": { "type": "string", "description": "Associated employee record ID" }
+      },
+      "required": ["id", "email", "password", "role"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Employee profiles containing details and salary details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique employee ID" },
+        "name": { "type": "string", "description": "Full name of the employee" },
+        "mobile": { "type": "string", "description": "Contact phone number" },
+        "employee_login_id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique uppercase login ID" },
+        "monthly_salary": { "type": "number", "description": "Calculated base monthly salary" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Account registration timestamp" }
+      },
+      "required": ["id", "name", "employee_login_id", "monthly_salary", "created_at"]
+    },
+    "MonthlyRecord": {
+      "title": "MonthlyRecord",
+      "description": "Aggregated payment, duty, and carry-forward stats per month",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Record ID formatted as rec-employeeId-year-month" },
+        "employee_id": { "type": "string", "description": "Employee relation key" },
+        "year": { "type": "number", "description": "Calendar year" },
+        "month": { "type": "number", "description": "Calendar month (1-12)" },
+        "duty_days": { "type": "number", "description": "Number of present/duty days worked" },
+        "overtime_amount": { "type": "number", "description": "Additional overtime bonuses" },
+        "carry_forward_in": { "type": "number", "description": "Previous debt carried forward" },
+        "total_earned": { "type": "number", "description": "Earned salary based on duty days" },
+        "total_withdrawals": { "type": "number", "description": "Sum of all withdrawals for the month" },
+        "final_salary": { "type": "number", "description": "Calculated final net salary (positive or negative)" },
+        "carry_forward_out": { "type": "number", "description": "Deficit carried over to next month" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Last calculation sync timestamp" }
+      },
+      "required": [
+        "id",
+        "employee_id",
+        "year",
+        "month",
+        "duty_days",
+        "overtime_amount",
+        "carry_forward_in",
+        "total_earned",
+        "total_withdrawals",
+        "final_salary",
+        "carry_forward_out",
+        "updated_at"
+      ]
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "Specific advances or payouts drawn by an employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Withdrawal identifier with timestamp prefix" },
+        "monthly_record_id": { "type": "string", "description": "Associated salary cycle month record" },
+        "employee_id": { "type": "string", "description": "Employee relation key" },
+        "date": { "type": "string", "format": "date", "description": "Transaction calendar date" },
+        "amount": { "type": "number", "description": "Amount withdrawn" },
+        "note": { "type": "string", "description": "Optional notes or reason" },
+        "created_by": { "type": "string", "description": "Who authorized: admin or employee" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Transaction registration timestamp" }
+      },
+      "required": ["id", "monthly_record_id", "employee_id", "date", "amount", "created_by", "created_at"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Daily status tracker for workers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifier formatted as att-employeeId-date" },
+        "employee_id": { "type": "string", "description": "Employee relation key" },
+        "date": { "type": "string", "format": "date", "description": "Calendar day" },
+        "status": { "type": "string", "enum": ["present", "absent"] }
+      },
+      "required": ["id", "employee_id", "date", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System-generated messages for real-time alerts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Notification identifier" },
+        "employee_id": { "type": "string", "description": "Target employee to receive alert" },
+        "type": { "type": "string", "enum": ["pagar", "upad"] },
+        "title": { "type": "string", "description": "Notification heading" },
+        "message": { "type": "string", "description": "Details of the transaction/change" },
+        "amount": { "type": "number", "description": "Optional numeric amount context" },
+        "is_read": { "type": "boolean", "description": "Read receipt status" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Notification timestamp" }
+      },
+      "required": ["id", "employee_id", "type", "title", "message", "is_read", "created_at"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "App credentials"
+    },
+    "employees": {
+      "schema": "Employee",
+      "description": "Worker details"
+    },
+    "monthly_records": {
+      "schema": "MonthlyRecord",
+      "description": "Aggregated ledger sheets"
+    },
+    "withdrawals": {
+      "schema": "Withdrawal",
+      "description": "Cash advances"
+    },
+    "attendance": {
+      "schema": "Attendance",
+      "description": "Daily clocks"
+    },
+    "notifications": {
+      "schema": "Notification",
+      "description": "Push alerts"
+    }
+  }
+}

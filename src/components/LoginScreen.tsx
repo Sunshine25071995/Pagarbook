@@ -114,19 +114,19 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
           <form onSubmit={handleLogin} className="space-y-4">
             {isAdmin ? (
-              // Admin Fields (Email + Password)
+              // Admin Fields (ID/Email + Password)
               <div>
                 <label className="block text-xs font-bold text-[#2B2620]/75 mb-1 font-sans">
-                  ઈમેલ આઈડી / ईमेल आईडी
+                  એડમિન આઈડી / एडमिन आईडी
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A9772F]/70" size={16} />
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="sunshinepolyfilm@gmail.com"
+                    placeholder="દા.ત. 753"
                     className="w-full bg-[#FDFBF7] border border-[#A9772F]/30 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#A9772F]/20 transition-all placeholder:text-gray-400 font-sans min-h-[44px]"
                   />
                 </div>

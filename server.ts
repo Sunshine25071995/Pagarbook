@@ -1,9 +1,24 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
+import { initializeApp } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit
+} from "firebase/firestore";
 
 dotenv.config();
 
@@ -12,11 +27,115 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Supabase Client
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://vqkvrnjdaxribilphxes.supabase.co";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxa3ZybmpkYXhyaWJpbHBoeGVzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDAxMjE2NiwiZXhwIjoyMDk5NTg4MTY2fQ.RtXHyYXhITacmnpKIHNnNSXeFsGTDTbO7siAQkFSxa8";
+// Initialize Firebase App & Firestore
+let firebaseConfig: any = null;
+let databaseId: string | undefined = undefined;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+if (fs.existsSync(configPath)) {
+  try {
+    const configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    firebaseConfig = {
+      apiKey: configData.apiKey,
+      authDomain: configData.authDomain,
+      projectId: configData.projectId,
+      storageBucket: configData.storageBucket,
+      messagingSenderId: configData.messagingSenderId,
+      appId: configData.appId
+    };
+    databaseId = configData.firestoreDatabaseId;
+    console.log("Loaded Firebase config from firebase-applet-config.json with databaseId:", databaseId);
+  } catch (err) {
+    console.error("Failed to parse firebase-applet-config.json:", err);
+  }
+}
+
+if (!firebaseConfig) {
+  firebaseConfig = {
+    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyDrJ-P7Dp4T5ayraUs9Nev-rU08JI6RvRg",
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || "pagarbook-b7ad8.firebaseapp.com",
+    projectId: process.env.FIREBASE_PROJECT_ID || "pagarbook-b7ad8",
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "pagarbook-b7ad8.firebasestorage.app",
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "94603138361",
+    appId: process.env.FIREBASE_APP_ID || "1:94603138361:web:428261179814fd217384e8"
+  };
+  databaseId = process.env.FIREBASE_DATABASE_ID;
+}
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
+
+// Firestore wrapper helpers for convenience and readability
+async function getAllDocs(colName: string): Promise<any[]> {
+  try {
+    const colRef = collection(db, colName);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.error(`Error fetching all from ${colName}:`, err);
+    return [];
+  }
+}
+
+async function getDocById(colName: string, id: string): Promise<any | null> {
+  try {
+    const docRef = doc(db, colName, id);
+    const snapshot = await getDoc(docRef);
+    if (snapshot.exists()) {
+      return { id: snapshot.id, ...snapshot.data() };
+    }
+  } catch (err) {
+    console.error(`Error fetching doc ${id} from ${colName}:`, err);
+  }
+  return null;
+}
+
+async function setDocWithId(colName: string, id: string, data: any): Promise<void> {
+  try {
+    const docRef = doc(db, colName, id);
+    await setDoc(docRef, data, { merge: true });
+  } catch (err) {
+    console.error(`Error setting doc ${id} in ${colName}:`, err);
+    throw err;
+  }
+}
+
+async function updateDocWithId(colName: string, id: string, data: any): Promise<void> {
+  try {
+    const docRef = doc(db, colName, id);
+    await updateDoc(docRef, data);
+  } catch (err) {
+    console.error(`Error updating doc ${id} in ${colName}:`, err);
+    throw err;
+  }
+}
+
+async function deleteDocWithId(colName: string, id: string): Promise<void> {
+  try {
+    const docRef = doc(db, colName, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error(`Error deleting doc ${id} from ${colName}:`, err);
+    throw err;
+  }
+}
+
+async function queryDocs(colName: string, ...constraints: any[]): Promise<any[]> {
+  try {
+    const colRef = collection(db, colName);
+    const q = query(colRef, ...constraints);
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.error(`Error querying ${colName}:`, err);
+    return [];
+  }
+}
+
+async function querySingleDoc(colName: string, ...constraints: any[]): Promise<any | null> {
+  const docs = await queryDocs(colName, ...constraints);
+  return docs.length > 0 ? docs[0] : null;
+}
 
 // Suggested duty days: total days in month minus Wednesdays
 function getSuggestedDutyDays(year: number, month: number): number {
@@ -32,40 +151,26 @@ function getSuggestedDutyDays(year: number, month: number): number {
 }
 
 // Helper to cascade salary recalculation
-async function recalculateEmployeeRecordsInSupabase(employeeId: string) {
+async function recalculateEmployeeRecordsInFirebase(employeeId: string) {
   try {
     // 1. Fetch employee
-    const { data: emp, error: empErr } = await supabase
-      .from("employees")
-      .select("*")
-      .eq("id", employeeId)
-      .single();
-    if (empErr || !emp) {
-      console.error("recalculate: Employee not found", employeeId, empErr);
+    const emp = await getDocById("employees", employeeId);
+    if (!emp) {
+      console.error("recalculate: Employee not found", employeeId);
       return;
     }
 
     const perDaySalary = emp.monthly_salary / 26;
 
     // 2. Fetch all monthly records for the employee
-    const { data: records, error: recsErr } = await supabase
-      .from("monthly_records")
-      .select("*")
-      .eq("employee_id", employeeId);
-    if (recsErr || !records) {
-      console.error("recalculate: Error fetching monthly records", recsErr);
-      return;
-    }
+    const records = await queryDocs("monthly_records", where("employee_id", "==", employeeId));
+    if (!records) return;
 
     // Sort chronologically (year * 12 + month)
     records.sort((a: any, b: any) => (a.year * 12 + a.month) - (b.year * 12 + b.month));
 
     // 3. Fetch all withdrawals for the employee
-    const { data: withdrawals } = await supabase
-      .from("withdrawals")
-      .select("*")
-      .eq("employee_id", employeeId);
-    const withdrawalList = withdrawals || [];
+    const withdrawalList = await queryDocs("withdrawals", where("employee_id", "==", employeeId));
 
     let prevCarryForwardOut = 0;
 
@@ -105,34 +210,26 @@ async function recalculateEmployeeRecordsInSupabase(employeeId: string) {
       rec.updated_at = new Date().toISOString();
       prevCarryForwardOut = rec.carry_forward_out;
 
-      // Update in Supabase
-      await supabase
-        .from("monthly_records")
-        .update({
-          total_earned: rec.total_earned,
-          total_withdrawals: rec.total_withdrawals,
-          carry_forward_in: rec.carry_forward_in,
-          final_salary: rec.final_salary,
-          carry_forward_out: rec.carry_forward_out,
-          updated_at: rec.updated_at,
-        })
-        .eq("id", rec.id);
+      // Update in Firebase
+      await setDocWithId("monthly_records", rec.id, {
+        total_earned: rec.total_earned,
+        total_withdrawals: rec.total_withdrawals,
+        carry_forward_in: rec.carry_forward_in,
+        final_salary: rec.final_salary,
+        carry_forward_out: rec.carry_forward_out,
+        updated_at: rec.updated_at,
+      });
     }
   } catch (err) {
-    console.error("Error in recalculateEmployeeRecordsInSupabase:", err);
+    console.error("Error in recalculateEmployeeRecordsInFirebase:", err);
   }
 }
 
 // Get or create monthly record
-async function getOrCreateRecordInSupabase(employeeId: string, year: number, month: number) {
+async function getOrCreateRecordInFirebase(employeeId: string, year: number, month: number) {
   try {
-    const { data: existingRec } = await supabase
-      .from("monthly_records")
-      .select("*")
-      .eq("employee_id", employeeId)
-      .eq("year", year)
-      .eq("month", month)
-      .maybeSingle();
+    const recId = `rec-${employeeId}-${year}-${month}`;
+    const existingRec = await getDocById("monthly_records", recId);
 
     if (existingRec) {
       return existingRec;
@@ -145,31 +242,22 @@ async function getOrCreateRecordInSupabase(employeeId: string, year: number, mon
     let carryForwardIn = 0;
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
+    const prevRecId = `rec-${employeeId}-${prevYear}-${prevMonth}`;
 
-    const { data: prevRec } = await supabase
-      .from("monthly_records")
-      .select("*")
-      .eq("employee_id", employeeId)
-      .eq("year", prevYear)
-      .eq("month", prevMonth)
-      .maybeSingle();
+    const prevRec = await getDocById("monthly_records", prevRecId);
 
     if (prevRec && prevRec.final_salary < 0) {
       carryForwardIn = Math.abs(prevRec.final_salary);
     }
 
     // Fetch employee
-    const { data: emp } = await supabase
-      .from("employees")
-      .select("*")
-      .eq("id", employeeId)
-      .single();
+    const emp = await getDocById("employees", employeeId);
 
     const perDaySalary = emp ? emp.monthly_salary / 26 : 0;
     const totalEarned = Math.round(perDaySalary * dutyDays);
 
     const newRec = {
-      id: `rec-${employeeId}-${year}-${month}`,
+      id: recId,
       employee_id: employeeId,
       year,
       month,
@@ -183,18 +271,13 @@ async function getOrCreateRecordInSupabase(employeeId: string, year: number, mon
       updated_at: new Date().toISOString(),
     };
 
-    await supabase.from("monthly_records").upsert(newRec);
-    await recalculateEmployeeRecordsInSupabase(employeeId);
+    await setDocWithId("monthly_records", recId, newRec);
+    await recalculateEmployeeRecordsInFirebase(employeeId);
 
-    const { data: finalRec } = await supabase
-      .from("monthly_records")
-      .select("*")
-      .eq("id", newRec.id)
-      .single();
-
+    const finalRec = await getDocById("monthly_records", recId);
     return finalRec || newRec;
   } catch (err) {
-    console.error("Error in getOrCreateRecordInSupabase:", err);
+    console.error("Error in getOrCreateRecordInFirebase:", err);
     return null;
   }
 }
@@ -222,34 +305,23 @@ app.post("/api/auth/login", async (req, res) => {
   const { email, password, employee_login_id } = req.body;
 
   try {
-    let user;
+    let user = null;
     if (employee_login_id) {
-      const targetEmail = `${employee_login_id.toLowerCase()}@sunshinepagarbook.internal`;
-      const { data } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", targetEmail)
-        .eq("password", password)
-        .maybeSingle();
-      user = data;
+      user = await querySingleDoc("users", 
+        where("employee_login_id", "==", employee_login_id.toUpperCase()),
+        where("password", "==", password)
+      );
     } else if (email) {
-      const { data } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", email.toLowerCase())
-        .eq("password", password)
-        .maybeSingle();
-      user = data;
+      user = await querySingleDoc("users", 
+        where("email", "==", email.toLowerCase()),
+        where("password", "==", password)
+      );
     }
 
     if (user) {
       let empName = "Admin";
       if (user.employee_id) {
-        const { data: emp } = await supabase
-          .from("employees")
-          .select("name")
-          .eq("id", user.employee_id)
-          .single();
+        const emp = await getDocById("employees", user.employee_id);
         if (emp) empName = emp.name;
       }
 
@@ -276,11 +348,9 @@ app.post("/api/auth/login", async (req, res) => {
 // 2. Employees CRUD (Admin only)
 app.get("/api/employees", async (req, res) => {
   try {
-    const { data: emps, error } = await supabase
-      .from("employees")
-      .select("*")
-      .order("created_at", { ascending: true });
-    if (error) throw error;
+    const emps = await getAllDocs("employees");
+    // Sort in JS to ensure predictable order
+    emps.sort((a, b) => a.created_at.localeCompare(b.created_at));
     res.json(emps || []);
   } catch (err: any) {
     console.error("Get employees error:", err);
@@ -293,11 +363,7 @@ app.post("/api/employees", async (req, res) => {
 
   try {
     // Validate unique employee ID
-    const { data: existing } = await supabase
-      .from("employees")
-      .select("id")
-      .eq("employee_login_id", employee_login_id.toUpperCase())
-      .maybeSingle();
+    const existing = await querySingleDoc("employees", where("employee_login_id", "==", employee_login_id.toUpperCase()));
 
     if (existing) {
       return res.status(400).json({ success: false, message: "આ કર્મચારી આઈડી પહેલેથી જ અસ્તિત્વમાં છે." });
@@ -313,12 +379,11 @@ app.post("/api/employees", async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
-    const { error: empErr } = await supabase.from("employees").insert(newEmp);
-    if (empErr) throw empErr;
+    await setDocWithId("employees", newEmpId, newEmp);
 
     // Add auth user credentials
     const targetEmail = `${employee_login_id.toLowerCase()}@sunshinepagarbook.internal`;
-    const { error: userErr } = await supabase.from("users").insert({
+    await setDocWithId("users", `${newEmpId}-uid`, {
       id: `${newEmpId}-uid`,
       email: targetEmail,
       employee_login_id: employee_login_id.toUpperCase(),
@@ -326,7 +391,6 @@ app.post("/api/employees", async (req, res) => {
       role: "employee",
       employee_id: newEmpId,
     });
-    if (userErr) throw userErr;
 
     res.json({ success: true, employee: newEmp });
   } catch (err: any) {
@@ -340,32 +404,23 @@ app.put("/api/employees/:id", async (req, res) => {
   const { name, mobile, monthly_salary, password } = req.body;
 
   try {
-    const { error: empErr } = await supabase
-      .from("employees")
-      .update({
-        name,
-        mobile,
-        monthly_salary: Number(monthly_salary),
-      })
-      .eq("id", id);
-    if (empErr) throw empErr;
+    await setDocWithId("employees", id, {
+      name,
+      mobile,
+      monthly_salary: Number(monthly_salary),
+    });
 
     // Update password if provided
     if (password) {
-      await supabase
-        .from("users")
-        .update({ password })
-        .eq("employee_id", id);
+      const user = await querySingleDoc("users", where("employee_id", "==", id));
+      if (user) {
+        await setDocWithId("users", user.id, { password });
+      }
     }
 
-    await recalculateEmployeeRecordsInSupabase(id);
+    await recalculateEmployeeRecordsInFirebase(id);
 
-    const { data: updatedEmp } = await supabase
-      .from("employees")
-      .select("*")
-      .eq("id", id)
-      .single();
-
+    const updatedEmp = await getDocById("employees", id);
     res.json({ success: true, employee: updatedEmp });
   } catch (err: any) {
     console.error("Update employee error:", err);
@@ -377,9 +432,12 @@ app.delete("/api/employees/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Relying on cascade deletes in foreign keys
-    await supabase.from("employees").delete().eq("id", id);
-    await supabase.from("users").delete().eq("employee_id", id);
+    await deleteDocWithId("employees", id);
+    
+    const user = await querySingleDoc("users", where("employee_id", "==", id));
+    if (user) {
+      await deleteDocWithId("users", user.id);
+    }
     res.json({ success: true });
   } catch (err: any) {
     console.error("Delete employee error:", err);
@@ -391,7 +449,7 @@ app.delete("/api/employees/:id", async (req, res) => {
 app.get("/api/monthly_records/:employeeId/:year/:month", async (req, res) => {
   const { employeeId, year, month } = req.params;
   try {
-    const record = await getOrCreateRecordInSupabase(employeeId, parseInt(year), parseInt(month));
+    const record = await getOrCreateRecordInFirebase(employeeId, parseInt(year), parseInt(month));
     res.json(record);
   } catch (err: any) {
     console.error("Get monthly record error:", err);
@@ -403,12 +461,9 @@ app.get("/api/monthly_records/all/:employeeId", async (req, res) => {
   const { employeeId } = req.params;
   try {
     const now = new Date();
-    await getOrCreateRecordInSupabase(employeeId, now.getFullYear(), now.getMonth() + 1);
+    await getOrCreateRecordInFirebase(employeeId, now.getFullYear(), now.getMonth() + 1);
 
-    const { data: records } = await supabase
-      .from("monthly_records")
-      .select("*")
-      .eq("employee_id", employeeId);
+    const records = await queryDocs("monthly_records", where("employee_id", "==", employeeId));
     res.json(records || []);
   } catch (err: any) {
     console.error("Get all monthly records error:", err);
@@ -420,7 +475,7 @@ app.post("/api/monthly_records/update", async (req, res) => {
   const { employee_id, year, month, duty_days, overtime_amount } = req.body;
 
   try {
-    let rec = await getOrCreateRecordInSupabase(employee_id, Number(year), Number(month));
+    let rec = await getOrCreateRecordInFirebase(employee_id, Number(year), Number(month));
     if (!rec) {
       return res.status(404).json({ success: false, message: "પત્રક શરૂ કરવામાં ભૂલ." });
     }
@@ -430,25 +485,17 @@ app.post("/api/monthly_records/update", async (req, res) => {
     if (overtime_amount !== undefined) updates.overtime_amount = Number(overtime_amount);
     updates.updated_at = new Date().toISOString();
 
-    const { error: updErr } = await supabase
-      .from("monthly_records")
-      .update(updates)
-      .eq("id", rec.id);
-    if (updErr) throw updErr;
-
-    await recalculateEmployeeRecordsInSupabase(employee_id);
+    await setDocWithId("monthly_records", rec.id, updates);
+    await recalculateEmployeeRecordsInFirebase(employee_id);
 
     // Fetch newly recalculated
-    const { data: refreshedRec } = await supabase
-      .from("monthly_records")
-      .select("*")
-      .eq("id", rec.id)
-      .single();
+    const refreshedRec = await getDocById("monthly_records", rec.id);
 
     // Insert notification
     const formattedMonthStr = `${month}/${year}`;
+    const notificationId = `notif-${Date.now()}`;
     const notification = {
-      id: `notif-${Date.now()}`,
+      id: notificationId,
       employee_id,
       type: "pagar",
       title: "सैलरी अपडेट / પગાર અપડેટ",
@@ -457,7 +504,7 @@ app.post("/api/monthly_records/update", async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
-    await supabase.from("notifications").insert(notification);
+    await setDocWithId("notifications", notificationId, notification);
     pushRealtimeUpdate(employee_id, notification);
 
     res.json({ success: true, record: refreshedRec });
@@ -471,11 +518,8 @@ app.post("/api/monthly_records/update", async (req, res) => {
 app.get("/api/withdrawals/:employeeId", async (req, res) => {
   const { employeeId } = req.params;
   try {
-    const { data: list } = await supabase
-      .from("withdrawals")
-      .select("*")
-      .eq("employee_id", employeeId)
-      .order("created_at", { ascending: false });
+    const list = await queryDocs("withdrawals", where("employee_id", "==", employeeId));
+    list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     res.json(list || []);
   } catch (err: any) {
     console.error("Get withdrawals error:", err);
@@ -491,13 +535,14 @@ app.post("/api/withdrawals", async (req, res) => {
     const year = wDate.getFullYear();
     const month = wDate.getMonth() + 1;
 
-    const rec = await getOrCreateRecordInSupabase(employee_id, year, month);
+    const rec = await getOrCreateRecordInFirebase(employee_id, year, month);
     if (!rec) {
       return res.status(500).json({ success: false, message: "પત્રક મેળવી શકાયું નથી." });
     }
 
+    const withId = `with-${Date.now()}`;
     const newWithdrawal = {
-      id: `with-${Date.now()}`,
+      id: withId,
       monthly_record_id: rec.id,
       employee_id,
       date,
@@ -507,14 +552,13 @@ app.post("/api/withdrawals", async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
-    const { error: withErr } = await supabase.from("withdrawals").insert(newWithdrawal);
-    if (withErr) throw withErr;
-
-    await recalculateEmployeeRecordsInSupabase(employee_id);
+    await setDocWithId("withdrawals", withId, newWithdrawal);
+    await recalculateEmployeeRecordsInFirebase(employee_id);
 
     // Insert notification
+    const notificationId = `notif-${Date.now()}`;
     const notification = {
-      id: `notif-${Date.now()}`,
+      id: notificationId,
       employee_id,
       type: "upad",
       title: "નવા ઉપાડ (Withdrawal) / नया उपाड़",
@@ -524,7 +568,7 @@ app.post("/api/withdrawals", async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
-    await supabase.from("notifications").insert(notification);
+    await setDocWithId("notifications", notificationId, notification);
     pushRealtimeUpdate(employee_id, notification);
 
     res.json({ success: true, withdrawal: newWithdrawal });
@@ -538,16 +582,12 @@ app.delete("/api/withdrawals/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const { data: withdrawal } = await supabase
-      .from("withdrawals")
-      .select("employee_id")
-      .eq("id", id)
-      .maybeSingle();
+    const withdrawal = await getDocById("withdrawals", id);
 
     if (withdrawal) {
       const employee_id = withdrawal.employee_id;
-      await supabase.from("withdrawals").delete().eq("id", id);
-      await recalculateEmployeeRecordsInSupabase(employee_id);
+      await deleteDocWithId("withdrawals", id);
+      await recalculateEmployeeRecordsInFirebase(employee_id);
       res.json({ success: true });
     } else {
       res.status(404).json({ success: false, message: "ઉપાડ મળ્યો નથી." });
@@ -562,10 +602,7 @@ app.delete("/api/withdrawals/:id", async (req, res) => {
 app.get("/api/attendance/:employeeId", async (req, res) => {
   const { employeeId } = req.params;
   try {
-    const { data: list } = await supabase
-      .from("attendance")
-      .select("*")
-      .eq("employee_id", employeeId);
+    const list = await queryDocs("attendance", where("employee_id", "==", employeeId));
     res.json(list || []);
   } catch (err: any) {
     console.error("Get attendance error:", err);
@@ -578,7 +615,7 @@ app.post("/api/attendance", async (req, res) => {
 
   try {
     const attId = `att-${employee_id}-${date}`;
-    await supabase.from("attendance").upsert({
+    await setDocWithId("attendance", attId, {
       id: attId,
       employee_id,
       date,
@@ -589,14 +626,13 @@ app.post("/api/attendance", async (req, res) => {
     const year = parseInt(yearStr);
     const month = parseInt(monthStr);
 
-    const rec = await getOrCreateRecordInSupabase(employee_id, year, month);
+    const rec = await getOrCreateRecordInFirebase(employee_id, year, month);
 
     // Count present days in this month
-    const { data: monthAttendance } = await supabase
-      .from("attendance")
-      .select("date")
-      .eq("employee_id", employee_id)
-      .eq("status", "present");
+    const monthAttendance = await queryDocs("attendance", 
+      where("employee_id", "==", employee_id),
+      where("status", "==", "present")
+    );
 
     const presentCount = (monthAttendance || []).filter((a: any) => {
       const [y, m] = a.date.split("-");
@@ -604,13 +640,10 @@ app.post("/api/attendance", async (req, res) => {
     }).length;
 
     if (presentCount > 0 && rec) {
-      await supabase
-        .from("monthly_records")
-        .update({ duty_days: presentCount })
-        .eq("id", rec.id);
+      await setDocWithId("monthly_records", rec.id, { duty_days: presentCount });
     }
 
-    await recalculateEmployeeRecordsInSupabase(employee_id);
+    await recalculateEmployeeRecordsInFirebase(employee_id);
     res.json({ success: true });
   } catch (err: any) {
     console.error("Submit attendance error:", err);
@@ -622,11 +655,8 @@ app.post("/api/attendance", async (req, res) => {
 app.get("/api/notifications/:employeeId", async (req, res) => {
   const { employeeId } = req.params;
   try {
-    const { data: list } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("employee_id", employeeId)
-      .order("created_at", { ascending: false });
+    const list = await queryDocs("notifications", where("employee_id", "==", employeeId));
+    list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     res.json(list || []);
   } catch (err: any) {
     console.error("Get notifications error:", err);
@@ -637,10 +667,10 @@ app.get("/api/notifications/:employeeId", async (req, res) => {
 app.post("/api/notifications/mark-read", async (req, res) => {
   const { employee_id } = req.body;
   try {
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("employee_id", employee_id);
+    const list = await queryDocs("notifications", where("employee_id", "==", employee_id), where("is_read", "==", false));
+    for (const notif of list) {
+      await setDocWithId("notifications", notif.id, { is_read: true });
+    }
     res.json({ success: true });
   } catch (err: any) {
     console.error("Mark read error:", err);
@@ -683,7 +713,7 @@ app.post("/api/gemini/command", async (req, res) => {
   }
 
   try {
-    const { data: employees } = await supabase.from("employees").select("id, name, employee_login_id");
+    const employees = await getAllDocs("employees");
     const employeeContext = (employees || []).map((e) => ({
       id: e.id,
       name: e.name,
@@ -760,7 +790,7 @@ Example commands:
         });
       }
 
-      const rec = await getOrCreateRecordInSupabase(
+      const rec = await getOrCreateRecordInFirebase(
         emp.id,
         parsedResponse.year || 2026,
         parsedResponse.month || 7
@@ -807,11 +837,7 @@ app.post("/api/gemini/confirm", async (req, res) => {
   const { employee_login_id, operation, amount, note, month, year } = req.body;
 
   try {
-    const { data: emp } = await supabase
-      .from("employees")
-      .select("*")
-      .eq("employee_login_id", employee_login_id)
-      .single();
+    const emp = await querySingleDoc("employees", where("employee_login_id", "==", employee_login_id));
 
     if (!emp) {
       return res.status(404).json({ success: false, message: "કર્મચારી મળ્યો નથી." });
@@ -819,15 +845,16 @@ app.post("/api/gemini/confirm", async (req, res) => {
 
     const activeYear = year || 2026;
     const activeMonth = month || 7;
-    const rec = await getOrCreateRecordInSupabase(emp.id, activeYear, activeMonth);
+    const rec = await getOrCreateRecordInFirebase(emp.id, activeYear, activeMonth);
 
     if (!rec) {
       return res.status(500).json({ success: false, message: "રેકોર્ડ મેળવવામાં નિષ્ફળતા." });
     }
 
     if (operation === "add_withdrawal") {
+      const withId = `with-${Date.now()}`;
       const newWithdrawal = {
-        id: `with-${Date.now()}`,
+        id: withId,
         monthly_record_id: rec.id,
         employee_id: emp.id,
         date: new Date(activeYear, activeMonth - 1, 15).toISOString().split("T")[0],
@@ -837,11 +864,12 @@ app.post("/api/gemini/confirm", async (req, res) => {
         created_at: new Date().toISOString(),
       };
 
-      await supabase.from("withdrawals").insert(newWithdrawal);
-      await recalculateEmployeeRecordsInSupabase(emp.id);
+      await setDocWithId("withdrawals", withId, newWithdrawal);
+      await recalculateEmployeeRecordsInFirebase(emp.id);
 
+      const notificationId = `notif-${Date.now()}`;
       const notification = {
-        id: `notif-${Date.now()}`,
+        id: notificationId,
         employee_id: emp.id,
         type: "upad",
         title: "नया उपाड़ (Withdrawal)",
@@ -850,18 +878,15 @@ app.post("/api/gemini/confirm", async (req, res) => {
         is_read: false,
         created_at: new Date().toISOString(),
       };
-      await supabase.from("notifications").insert(notification);
+      await setDocWithId("notifications", notificationId, notification);
       pushRealtimeUpdate(emp.id, notification);
     } else if (operation === "add_overtime") {
-      await supabase
-        .from("monthly_records")
-        .update({ overtime_amount: Number(amount) })
-        .eq("id", rec.id);
+      await setDocWithId("monthly_records", rec.id, { overtime_amount: Number(amount) });
+      await recalculateEmployeeRecordsInFirebase(emp.id);
 
-      await recalculateEmployeeRecordsInSupabase(emp.id);
-
+      const notificationId = `notif-${Date.now()}`;
       const notification = {
-        id: `notif-${Date.now()}`,
+        id: notificationId,
         employee_id: emp.id,
         type: "pagar",
         title: "ओवरटाइम अपडेट",
@@ -869,18 +894,15 @@ app.post("/api/gemini/confirm", async (req, res) => {
         is_read: false,
         created_at: new Date().toISOString(),
       };
-      await supabase.from("notifications").insert(notification);
+      await setDocWithId("notifications", notificationId, notification);
       pushRealtimeUpdate(emp.id, notification);
     } else if (operation === "update_duty_days") {
-      await supabase
-        .from("monthly_records")
-        .update({ duty_days: Number(amount) })
-        .eq("id", rec.id);
+      await setDocWithId("monthly_records", rec.id, { duty_days: Number(amount) });
+      await recalculateEmployeeRecordsInFirebase(emp.id);
 
-      await recalculateEmployeeRecordsInSupabase(emp.id);
-
+      const notificationId = `notif-${Date.now()}`;
       const notification = {
-        id: `notif-${Date.now()}`,
+        id: notificationId,
         employee_id: emp.id,
         type: "pagar",
         title: "ड्यूटी दिन अपडेट",
@@ -888,7 +910,7 @@ app.post("/api/gemini/confirm", async (req, res) => {
         is_read: false,
         created_at: new Date().toISOString(),
       };
-      await supabase.from("notifications").insert(notification);
+      await setDocWithId("notifications", notificationId, notification);
       pushRealtimeUpdate(emp.id, notification);
     }
 
@@ -900,22 +922,26 @@ app.post("/api/gemini/confirm", async (req, res) => {
 });
 
 // Auto Seed function
-async function seedSupabaseIfNeeded() {
+async function seedFirebaseIfNeeded() {
   try {
-    // Check users
-    const { count: userCount, error: userCountErr } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true });
+    console.log("Ensuring admin user exists in Firebase Firestore...");
+    await setDocWithId("users", "admin-uid", {
+      id: "admin-uid",
+      email: "753",
+      password: "753",
+      role: "admin",
+    });
 
-    if (!userCountErr && userCount === 0) {
-      console.log("Seeding admin user to Supabase...");
-      await supabase.from("users").insert({
-        id: "admin-uid",
-        email: "sunshinepolyfilm@gmail.com",
-        password: "admin123",
-        role: "admin",
-      });
+    // Also keep legacy email as fallback
+    await setDocWithId("users", "admin-legacy-uid", {
+      id: "admin-legacy-uid",
+      email: "sunshinepolyfilm@gmail.com",
+      password: "admin123",
+      role: "admin",
+    });
 
+    const employees = await getAllDocs("employees");
+    if (employees.length === 0) {
       console.log("Seeding default employees...");
       const defaultEmployees = [
         {
@@ -943,7 +969,9 @@ async function seedSupabaseIfNeeded() {
           created_at: new Date().toISOString(),
         },
       ];
-      await supabase.from("employees").insert(defaultEmployees);
+      for (const emp of defaultEmployees) {
+        await setDocWithId("employees", emp.id, emp);
+      }
 
       console.log("Seeding default employee user accounts...");
       const defaultUsers = [
@@ -972,7 +1000,9 @@ async function seedSupabaseIfNeeded() {
           employee_id: "emp-103",
         },
       ];
-      await supabase.from("users").insert(defaultUsers);
+      for (const usr of defaultUsers) {
+        await setDocWithId("users", usr.id, usr);
+      }
     }
   } catch (err) {
     console.error("Automatic seeding failed:", err);
@@ -981,7 +1011,7 @@ async function seedSupabaseIfNeeded() {
 
 // Server configuration & Dev/Production middleware
 async function startServer() {
-  await seedSupabaseIfNeeded();
+  await seedFirebaseIfNeeded();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
