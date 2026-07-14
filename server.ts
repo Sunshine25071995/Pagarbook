@@ -36,7 +36,14 @@ app.use(express.json());
 let firebaseConfig: any = null;
 let databaseId: string | undefined = undefined;
 
-const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+let configPath = path.join(process.cwd(), "firebase-applet-config.json");
+if (!fs.existsSync(configPath)) {
+  configPath = path.join(__dirname, "firebase-applet-config.json");
+}
+if (!fs.existsSync(configPath)) {
+  configPath = path.join(__dirname, "..", "firebase-applet-config.json");
+}
+
 if (fs.existsSync(configPath)) {
   try {
     const configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -72,14 +79,12 @@ const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(fir
 const auth = getAuth(firebaseApp);
 
 let seeded = false;
-app.use(async (req, res, next) => {
+app.use((req, res, next) => {
   if (!seeded && req.path.startsWith("/api")) {
-    try {
-      await seedFirebaseIfNeeded();
-      seeded = true;
-    } catch (e: any) {
+    seeded = true;
+    seedFirebaseIfNeeded().catch((e: any) => {
       console.error("Lazy seeding failed:", e.message);
-    }
+    });
   }
   next();
 });
@@ -1173,7 +1178,9 @@ async function seedFirebaseIfNeeded() {
 
 // Server configuration & Dev/Production middleware
 async function startServer() {
-  await seedFirebaseIfNeeded();
+  seedFirebaseIfNeeded().catch(err => {
+    console.error("Background initial seeding failed:", err);
+  });
 
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
