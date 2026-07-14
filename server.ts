@@ -44,7 +44,11 @@ if (!fs.existsSync(configPath)) {
   configPath = path.join(__dirname, "..", "firebase-applet-config.json");
 }
 
-if (fs.existsSync(configPath)) {
+// CRITICAL: On Vercel, do NOT load local developer config (firebase-applet-config.json).
+// Instead, use production environment variables or the production hardcoded fallback.
+const isVercel = !!process.env.VERCEL;
+
+if (!isVercel && fs.existsSync(configPath)) {
   try {
     const configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     firebaseConfig = {
@@ -64,14 +68,14 @@ if (fs.existsSync(configPath)) {
 
 if (!firebaseConfig) {
   firebaseConfig = {
-    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyDv6ztAUr8WGupC7sLGYkciN_CNMlBetIA",
-    authDomain: process.env.FIREBASE_AUTH_DOMAIN || "gen-lang-client-0227893876.firebaseapp.com",
-    projectId: process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0227893876",
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "gen-lang-client-0227893876.firebasestorage.app",
-    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "1014315466034",
-    appId: process.env.FIREBASE_APP_ID || "1:1014315466034:web:c26a0441dddb239a2deb2b"
+    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyDrJ-P7Dp4T5ayraUs9Nev-rU08JI6RvRg",
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || "pagarbook-b7ad8.firebaseapp.com",
+    projectId: process.env.FIREBASE_PROJECT_ID || "pagarbook-b7ad8",
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "pagarbook-b7ad8.firebasestorage.app",
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "94603138361",
+    appId: process.env.FIREBASE_APP_ID || "1:94603138361:web:428261179814fd217384e8"
   };
-  databaseId = process.env.FIREBASE_DATABASE_ID || "ai-studio-sunshinepagarboo-c6624f1f-c0f4-40e5-955f-e1b65bd54e21";
+  databaseId = process.env.FIREBASE_DATABASE_ID;
 }
 
 const firebaseApp = initializeApp(firebaseConfig);
