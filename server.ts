@@ -72,6 +72,19 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
+let seeded = false;
+app.use(async (req, res, next) => {
+  if (!seeded && req.path.startsWith("/api")) {
+    try {
+      await seedFirebaseIfNeeded();
+      seeded = true;
+    } catch (e: any) {
+      console.error("Lazy seeding failed:", e.message);
+    }
+  }
+  next();
+});
+
 // Firestore wrapper helpers for convenience and readability
 async function getAllDocs(colName: string): Promise<any[]> {
   try {
@@ -1182,4 +1195,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
